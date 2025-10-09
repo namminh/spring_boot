@@ -204,7 +204,7 @@ Tài liệu này mô tả chi tiết kiến trúc và chức năng của ba dị
   - Profile `lab-cloud` bật Spring Cloud Config client, Eureka discovery và Spring Cloud LoadBalancer; kết hợp cùng `lab-java21` khi deploy trên đám mây.
   - Mỗi service gán `spring.application.name` mặc định (`corebank-payment`, `corebank-orchestrator`, `corebank-investigation`, `corebank-payment-stream`) để đăng ký và định tuyến qua Eureka.
   - `PaymentStatusClient` dùng RestTemplate load-balanced khi discovery bật, tự động rơi về gọi trực tiếp khi chạy môi trường cục bộ.
-  - Quy trình đầy đủ xem thêm `docs/corebank_payment_lab_cloud.md` và playbook tích hợp cloud-native: `docs/cloud_native_legacy_integration.md`.
+  - Quy trình đầy đủ xem thêm `docs/corebank_payment_lab_cloud.md`, playbook tích hợp cloud-native `docs/cloud_native_legacy_integration.md` và hướng dẫn triển khai từng bước `docs/cloud_deployment_guide.md`.
 
 ---
 

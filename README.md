@@ -51,6 +51,7 @@ Spring Boot 3.x lab environment that wraps a mock Oracle Tuxedo domain and demon
 - `docs/corebank_payment_lab_cloud.md`: hướng dẫn bật Spring Cloud Config/Eureka khi triển khai đám mây.
 - `docs/hybrid_java_proc_tuxedo_architecture.md`: nghiên cứu kiến trúc hybrid Java API ↔ Pro*C backend qua Oracle Tuxedo.
 - `docs/cloud_native_legacy_integration.md`: playbook tích hợp cloud-native với hệ thống legacy (Tuxedo, Pro*C).
+- `docs/cloud_deployment_guide.md`: quy trình triển khai toàn bộ API lên cloud (build → container → Kubernetes/ECS → observability).
 
 ## Tests
 - `mvn test` chạy MockMvc flow cho payment (runner CI GitHub dùng Temurin 21, xem `.github/workflows/ci.yml`).
