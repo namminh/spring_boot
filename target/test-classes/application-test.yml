@@ -1,0 +1,20 @@
+spring:
+  cache:
+    type: none
+  datasource:
+    url: jdbc:h2:mem:corebanklab;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    username: orchestrator
+    password: changeme
+    driver-class-name: org.h2.Driver
+  security:
+    user:
+      name: orchestrator
+      password: changeme
+      roles: ORCHESTRATOR
+  redis:
+    host: localhost
+    port: 0
+
+payment:
+  cache:
+    enabled: false

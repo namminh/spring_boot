@@ -1,0 +1,144 @@
+asyncapi: 2.6.0
+info:
+  title: CoreBank Payment Events
+  version: 0.1.0
+  description: |
+    Kafka topics emitted by the payment orchestrator through the Outbox relay.
+    Events are produced after the Tuxedo transaction commits.
+defaultContentType: application/json
+servers:
+  kafka-dev:
+    url: localhost:9092
+    protocol: kafka
+    description: Local or developer Kafka cluster
+channels:
+  payments.txn.completed:
+    description: Events raised when payment processing finishes successfully.
+    subscribe:
+      summary: Consume completed payment notifications
+      message:
+        $ref: '#/components/messages/PaymentEvent'
+  payments.txn.failed:
+    description: Events raised when the payment fails in legacy processing or orchestration.
+    subscribe:
+      summary: Consume failed payment notifications
+      message:
+        $ref: '#/components/messages/PaymentEvent'
+  payments.analytics.completed:
+    description: Enriched analytic stream produced by the payment stream processor.
+    subscribe:
+      summary: Consume enriched completed payment analytics events
+      message:
+        $ref: '#/components/messages/PaymentAnalyticsEvent'
+components:
+  messages:
+    PaymentEvent:
+      name: PaymentEvent
+      title: Payment lifecycle event
+      summary: Notification describing the outcome of a processed payment.
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/PaymentEventPayload'
+      headers:
+        type: object
+        properties:
+          kafka_messageKey:
+            description: UUID assigned by the outbox relay; exposed as Kafka message key for ordering.
+            type: string
+            format: uuid
+    PaymentAnalyticsEvent:
+      name: PaymentAnalyticsEvent
+      title: Enriched payment analytics event
+      summary: Downstream-ready payload with additional computed fields.
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/PaymentAnalyticsPayload'
+      headers:
+        type: object
+        properties:
+          kafka_messageKey:
+            description: UUID assigned by the stream processor (origin event id).
+            type: string
+            format: uuid
+  schemas:
+    PaymentEventPayload:
+      type: object
+      required:
+        - paymentId
+        - reference
+        - amount
+        - currency
+        - status
+        - responseCode
+        - responseMessage
+      properties:
+        paymentId:
+          type: string
+          format: uuid
+          description: Orchestrator payment aggregate identifier.
+        reference:
+          type: string
+          description: Business reference supplied by the originating channel.
+        amount:
+          type: number
+          format: decimal
+          description: Amount captured from the original request.
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          description: ISO 4217 alpha code.
+        status:
+          $ref: '#/components/schemas/PaymentStatus'
+        responseCode:
+          type: string
+          description: Response or error code returned by the Tuxedo service.
+        responseMessage:
+          type: string
+          description: Human-readable message explaining the response code.
+    PaymentStatus:
+      type: string
+      enum:
+        - COMPLETED
+        - FAILED
+      description: Terminal statuses emitted to downstream consumers.
+    PaymentAnalyticsPayload:
+      type: object
+      required:
+        - paymentId
+        - reference
+        - amount
+        - currency
+        - status
+        - processedAt
+        - amountMinor
+      properties:
+        paymentId:
+          type: string
+          format: uuid
+          description: Orchestrator payment aggregate identifier.
+        reference:
+          type: string
+          description: Business reference supplied by the originating channel.
+        amount:
+          type: number
+          format: decimal
+          description: Amount captured from the original request.
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        status:
+          type: string
+          enum:
+            - COMPLETED
+            - FAILED
+        responseCode:
+          type: string
+        responseMessage:
+          type: string
+        processedAt:
+          type: string
+          format: date-time
+          description: Stream processor timestamp.
+        amountMinor:
+          type: number
+          description: Amount represented in minor units (e.g., cents).

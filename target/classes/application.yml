@@ -1,0 +1,73 @@
+spring:
+  application:
+    name: corebank-payment-lab
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:corebanklab;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1}
+    username: ${SPRING_DATASOURCE_USERNAME:orchestrator}
+    password: ${SPRING_DATASOURCE_PASSWORD:changeme}
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:org.h2.Driver}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+    show-sql: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+  security:
+    user:
+      name: ${SPRING_SECURITY_USER_NAME:orchestrator}
+      password: ${SPRING_SECURITY_USER_PASSWORD:changeme}
+      roles: ORCHESTRATOR
+  redis:
+    host: ${SPRING_REDIS_HOST:localhost}
+    port: ${SPRING_REDIS_PORT:6379}
+    timeout: ${SPRING_REDIS_TIMEOUT:2000}
+  cache:
+    type: redis
+  cloud:
+    config:
+      enabled: ${SPRING_CLOUD_CONFIG_ENABLED:false}
+    discovery:
+      enabled: ${SPRING_CLOUD_DISCOVERY_ENABLED:false}
+    loadbalancer:
+      enabled: ${SPRING_CLOUD_LOADBALANCER_ENABLED:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+
+payment:
+  events:
+    kafka-enabled: ${PAYMENT_EVENTS_KAFKA_ENABLED:false}
+  outbox:
+    poll-interval-ms: ${PAYMENT_OUTBOX_POLL_INTERVAL_MS:2000}
+  streams:
+    enabled: ${PAYMENT_STREAMS_ENABLED:false}
+
+investigation:
+  payment-service:
+    base-url: ${INVESTIGATION_PAYMENT_BASE_URL:http://localhost:8080}
+  default-assignee: ${INVESTIGATION_DEFAULT_ASSIGNEE:ops-investigation}
+
+resilience4j:
+  retry:
+    instances:
+      tuxedo-process:
+        max-attempts: 3
+        wait-duration: 200ms
+
+logging:
+  level:
+    com.corebank.payment: INFO
+    org.springframework.kafka: WARN
+
+eureka:
+  client:
+    enabled: ${EUREKA_CLIENT_ENABLED:false}

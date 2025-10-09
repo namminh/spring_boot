@@ -1,0 +1,8 @@
+spring:
+  threads:
+    virtual:
+      enabled: true
+management:
+  metrics:
+    tags:
+      execution-profile: lab-java21

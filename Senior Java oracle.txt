@@ -1,0 +1,58 @@
+
+
+
+
+JOB DESCRIPTION
+
+
+Job title	: Senoir Java 
+Position type	: Full-time
+Location	:
+ Responsibilities	
+* Take technical leadership over complex modules  help define solutions, and control the quality of deliverables
+* Perform root cause analysis and resolve incidents in production systems within SLA timelines.
+* Define and implement solutions for complex backend modules using Java and Relational databases (Oracle, PostgreSQL, MySQL)
+* Deploy, configure, and manage backend applications on AWS Cloud, ensuring high availability and security.
+* Handle critical incident resolution, root cause analysis, and implement preventive improvements.
+* Implement performance tuning and scalability improvements for managed service environments.
+* Conduct and automate unit testing and integration testing to ensure service stability after changes.
+* Operate and improve CI/CD pipelines for continuous service updates and patching.
+* Collaborate with operations and service desk teams for incident, change, and problem management following ITIL best practices.
+* Document technical specifications, operational procedures, and troubleshooting guides to support 24/7 service operations.
+* Optional: Apply Groovy scripting for automation, integration, and monitoring tasks.
+ Requirements	
+Technical Skills:
+* Strong experience in Java and OOP programming.
+* Experience with Java frameworks as Spring, Spring boot.
+* Proficiency in RDBMS: Oracle or PostgreSQL, MySQL.
+* Experience managing applications in AWS environments.
+* Strong understanding of service monitoring, incident response, and system optimization.
+* Experience with CI/CD & DevOps tools (e.g., Jenkins, GitLab CI/CD, Docker, Kubernetes).
+* Familiarity with ITIL service management processes.
+* Preferred: Groovy scripting skills.
+Education & Experience
+* Bachelor’s degree in Computer Science, IT, or related field.
+* 5–7+ years in backend development & managed service operations.
+* Track record of independently handling production-level services and complex module solutions.
+* Experience in cloud-based managed service projects is highly desirable.
+* Relevant certifications are a plus (AWS Certified Solutions Architect, ITIL Foundation, Oracle Certified Professional – Java).
+* Working from 13h-23h
+Highlight benefits:	
+- Salary: Negotiate + 13th
+- Insurance: FPT care
+- Renew salary from 1 – 2 times/ year
+- Opportunity to travel to EU, USA, Asia and work directly with customers.
+- Opportunity to learn and work with high standard of quality software development per Europe, USA, Asia standard.
+
+- Have chance to build long term relationships with colleagues via multiple projects.
+- Be a true part of customer team across Europe and Asia.
+- Attractive offer, plus annual compensation and performance bonus.
+- “FPT care” health insurance provided by AON and is exclusive for FPT employees.
+- Support for learning and certificate examination.
+- Company shuttle buses provide convenient way of transportation for all employees.
+- Salary review 1 time/year or on excellent performance
+- Annual Summer Vacation: follows company’s policy and starts from May every year
+- International, dynamic, friendly working environment
+- Annual leave, working conditions follow Vietnam labor laws.
+- Other allowances: transportation allowance, lunch allowance, working on-site allowance, etc.
+- FTown Campus provide many facilities for FPT employees such as football ground, basketball & volleyball, gym & yoga centre, restaurant, cafeteria, etc

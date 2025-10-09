@@ -1,0 +1,176 @@
+openapi: 3.0.3
+info:
+  title: CoreBank Payment API
+  version: 0.1.0
+  description: |
+    HTTP API surface of the CoreBank payment orchestrator. All endpoints require HTTP Basic authentication.
+servers:
+  - url: http://localhost:8080
+    description: Local development runtime
+security:
+  - basicAuth: []
+paths:
+  /api/v1/payments:
+    post:
+      operationId: initiatePayment
+      summary: Initiate a payment transaction
+      description: |
+        Creates a payment request, forwards it to the Tuxedo core and persists the ledger outcome.
+        The response reflects the orchestrator status immediately after the legacy call completes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+            examples:
+              standard:
+                value:
+                  reference: ORD-20240430-0001
+                  amount: 1250000.00
+                  currency: VND
+                  channel: MOBILE
+                  debtorAccount: 1234567890
+                  creditorAccount: 9988776655
+      responses:
+        '201':
+          description: Payment accepted and processed via legacy core.
+          headers:
+            Location:
+              description: Absolute path to the newly created payment resource.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Validation failure (missing or invalid request payload).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/payments/{reference}:
+    get:
+      operationId: fetchPaymentByReference
+      summary: Retrieve a payment by business reference
+      parameters:
+        - $ref: '#/components/parameters/PaymentReference'
+      responses:
+        '200':
+          description: Payment located.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Payment with the supplied reference does not exist.
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/payments/metrics/status-count:
+    get:
+      operationId: paymentStatusBreakdown
+      summary: Aggregate counts of payments by status
+      description: Returns the number of payments currently stored under each lifecycle status.
+      responses:
+        '200':
+          description: Status distribution snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusHistogram'
+              examples:
+                sample:
+                  value:
+                    RECEIVED: 4
+                    IN_PROGRESS: 1
+                    COMPLETED: 27
+                    FAILED: 3
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+  parameters:
+    PaymentReference:
+      name: reference
+      in: path
+      required: true
+      description: Unique business reference assigned by the caller when the payment was submitted.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+  schemas:
+    PaymentRequest:
+      type: object
+      required:
+        - reference
+        - amount
+        - currency
+        - channel
+        - debtorAccount
+        - creditorAccount
+      properties:
+        reference:
+          type: string
+          description: Business reference supplied by the channel to ensure idempotency.
+        amount:
+          type: number
+          format: decimal
+          minimum: 0.01
+          description: Amount to debit in the stated currency.
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          description: ISO 4217 currency alpha code.
+        channel:
+          type: string
+          description: Logical channel identifier (for example MOBILE, INTERNET, BACKOFFICE).
+        debtorAccount:
+          type: string
+          description: Core account to debit.
+        creditorAccount:
+          type: string
+          description: Core account to credit.
+    PaymentResponse:
+      type: object
+      required:
+        - paymentId
+        - reference
+        - status
+      properties:
+        paymentId:
+          type: string
+          format: uuid
+          description: Internal UUID assigned by the orchestrator.
+        reference:
+          type: string
+          description: Business reference echoed back to the caller.
+        status:
+          $ref: '#/components/schemas/PaymentStatus'
+    PaymentStatus:
+      type: string
+      description: Lifecycle status maintained by the orchestrator.
+      enum:
+        - RECEIVED
+        - IN_PROGRESS
+        - COMPLETED
+        - FAILED
+    StatusHistogram:
+      type: object
+      description: Map of payment status identifier to count.
+      additionalProperties:
+        type: integer
+        minimum: 0
+  responses:
+    Unauthorized:
+      description: Authentication failed. Supply valid HTTP Basic credentials.
+    InternalError:
+      description: Unexpected error while interacting with legacy core or persistence.

@@ -1,0 +1,46 @@
+pipeline {
+    agent {
+        docker {
+            image 'maven:3.9.6-eclipse-temurin-21'
+            args '-u root:root'
+        }
+    }
+
+    options {
+        timestamps()
+        skipDefaultCheckout(false)
+    }
+
+    stages {
+        stage('Restore Cache') {
+            steps {
+                script {
+                    if (fileExists('.m2')) {
+                        echo 'Reusing local Maven repository cache'
+                    } else {
+                        sh 'mkdir -p .m2/repository'
+                    }
+                }
+            }
+        }
+
+        stage('Build & Test') {
+            steps {
+                sh 'mvn -B -ntp clean verify'
+            }
+        }
+
+        stage('Archive') {
+            steps {
+                archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+                junit 'target/surefire-reports/*.xml'
+            }
+        }
+    }
+
+    post {
+        always {
+            sh 'ls -R target || true'
+        }
+    }
+}
