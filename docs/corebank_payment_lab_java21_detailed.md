@@ -266,4 +266,196 @@ Tài liệu này mô tả chi tiết kiến trúc và chức năng của ba dị
   - Liên kết chặt chẽ giữa kiến trúc, vận hành và CI/CD, giúp phát hành ổn định với độ tin cậy cao trong các hệ thống yêu cầu throughput lớn.
   - Cung cấp tài liệu chi tiết và góc nhìn tổng thể để onboarding, chuyển giao tri thức, đảm bảo sản phẩm duy trì được chất lượng dài hạn, hướng vào tối ưu latency đầu-cuối.
 
+---
+
+## 10. Phụ lục – Giải thích các kiến thức Java 21 trọng điểm
+
+### 10.1 Virtual Thread và Structured Concurrency
+- **Virtual Thread** (Project Loom) là lightweight thread được JVM quản lý thay vì OS, cho phép tạo hàng nghìn thread chi phí thấp; phù hợp workload I/O-bound như call REST hoặc publish Kafka. Trong Lab, `PaymentController.statusBreakdown` và `OutboxRelay` khai thác thông qua cấu hình `spring.threads.virtual.enabled=true`.
+- **StructuredTaskScope** cung cấp structured concurrency: mọi task con sống trong một scope rõ ràng, bị hủy khi scope đóng giúp tránh rò rỉ hoặc task zombie.
+- Ví dụ rút gọn từ `statusBreakdown`:
+
+```java
+try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+    Map<PaymentStatus, Future<Long>> futures = new EnumMap<>(PaymentStatus.class);
+    for (PaymentStatus status : PaymentStatus.values()) {
+        futures.put(status, scope.fork(() -> orchestrator.countByStatus(status)));
+    }
+    scope.join().throwIfFailed(); // chờ tất cả virtual thread hoàn tất
+    return futures.entrySet().stream()
+            .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().resultNow()));
+}
+```
+- **Khi nào dùng**: ưu tiên cho tác vụ có độ trễ I/O cao, muốn giữ model lập trình thread truyền thống nhưng tránh phức tạp của pool. Không nên dùng virtual thread cho CPU-bound kéo dài vì vẫn chia sẻ cùng core.
+- **Best practice**: đóng scope trong `try-with-resources`, xử lý `InterruptedException`, ưu tiên bất biến/immutable data để chia sẻ giữa các virtual thread.
+
+### 10.2 Record class và bất biến
+- `record` giới thiệu từ Java 16, được tận dụng cho DTO (`PaymentRequestDto`, `PaymentResponseDto`) và domain (`Payment`, `PaymentCommand`). Record tự sinh constructor, accessors (`component()`), `equals/hashCode/toString`, giúp giảm boilerplate và khuyến khích thiết kế bất biến.
+- Khi cần logic bổ sung, có thể khai báo compact constructor:
+
+```java
+public record PaymentCommand(String reference, BigDecimal amount) {
+    public PaymentCommand {
+        Objects.requireNonNull(reference);
+        if (amount.signum() <= 0) {
+            throw new IllegalArgumentException("Amount must be positive");
+        }
+    }
+}
+```
+- Record phù hợp vai trò data-carrier; nếu cần mutable state (ví dụ entity JPA) thì tiếp tục dùng class thông thường.
+
+### 10.3 Pattern matching cho `switch` và record pattern
+- Java 21 cho phép `switch` dựa trên pattern thay vì so sánh hằng số, giúp code phân nhánh rõ ràng hơn. Ở Lab: `PaymentOrchestratorService.eventType(...)` hoặc `MockTuxedoClient` dùng để phân biệt response.
+
+```java
+return switch (response) {
+    case TuxedoResponse.Success s -> new PaymentStatusSnapshot(true, s.status(), null);
+    case TuxedoResponse.Failure f -> new PaymentStatusSnapshot(false, null, f.reason());
+};
+```
+- **Record pattern**: destructuring trực tiếp record, giảm getter thủ công; compiler kiểm tra exhaustiveness để tránh bỏ sót case.
+- **Lưu ý**: luôn thêm `default` hoặc bảo đảm `switch` exhaustive để compiler cảnh báo khi mở rộng sealed hierarchy.
+
+### 10.4 Virtual Thread với API blocking
+- Virtual thread tương thích hoàn toàn với API blocking hiện có (JDBC, RestTemplate). Vì vậy `RestTemplate` trong `PaymentStatusClient` hay `JpaRepository` trong service có thể gọi trực tiếp mà không cần chuyển sang reactive.
+- **Pitfall**: thư viện khóa `synchronized` dài hoặc thao tác CPU nặng vẫn gây nghẽn. Nên tách logic CPU-bound sang executor chuyên dụng hoặc dùng `StructuredTaskScope` khác.
+
+### 10.5 Công cụ lập trình hàm và bất biến
+- `Optional`, `Stream`, `EnumMap` hay `Collectors.toMap` xuất hiện rộng rãi. Kết hợp record và immutable collection giúp code thread-safe hơn, tránh race condition khi chạy song song.
+- Ví dụ ghép dữ liệu bất biến:
+
+```java
+return Arrays.stream(PaymentStatus.values())
+        .collect(Collectors.toUnmodifiableMap(
+                Function.identity(),
+                status -> orchestrator.countByStatus(status)));
+```
+- Khi áp dụng trong code thực tế, import thêm `java.util.Arrays`, `java.util.function.Function` và `java.util.stream.Collectors`.
+
+---
+
+## 11. SLA 99.97% – Định nghĩa và cách bảo đảm
+
+### 11.1 Ý nghĩa và cách tính
+- SLA 99.97% tương đương tối đa 0.03% downtime trong kỳ đo. Với kỳ 30 ngày, error budget còn lại là **13 phút 1 giây** downtime cho toàn bộ hệ thống CoreBank Payment Lab.
+- Công thức tính uptime:
+
+```text
+Availability = (Total Time − Downtime) / Total Time × 100%
+```
+
+- Downtime bao gồm gián đoạn toàn phần (service/DB/Kafka không phản hồi) và gián đoạn chức năng trọng yếu (không tạo được thanh toán mới > 5 phút). Maintenance có kế hoạch được trừ khỏi total time nếu thông báo ≥24h.
+
+| Kỳ đo | Downtime tối đa cho 99.97% |
+|-------|----------------------------|
+| 1 ngày | 26 giây |
+| 7 ngày | 3 phút 3 giây |
+| 30 ngày | 13 phút 1 giây |
+
+### 11.2 Cách đo lường
+- **Service Level Indicator (SLI)**: tỉ lệ request HTTP 2xx/3xx cho API thanh toán và orchestration trong rolling window 5 phút. Alert khi SLI < 99.9% trong hai cửa sổ liên tiếp.
+- **Synthetic Transaction**: script tạo thanh toán thử 2 phút/lần để phát hiện sớm lỗi Tuxedo/Kafka, ghi vào Prometheus `synthetic_success_ratio`.
+- **Outbox Lag**: `pending_events_count` và `max_outbox_delay_ms` giúp phát hiện trễ phát sự kiện (được tính downtime nếu vượt ngưỡng 2 phút).
+
+### 11.3 Kiến trúc hỗ trợ SLA
+- **Resilience Pattern**: retry Resilience4j cho Tuxedo, queue relay có backpressure và dead-letter, đảm bảo lỗi tạm thời không gây downtime dài.
+- **Cache & Degradation**: Redis cache cho `findByReference` giúp trả lời ngay cả khi DB chậm. Orchestrator cho phép fallback đọc dữ liệu cũ để không làm gián đoạn giám sát.
+- **Isolation**: Payment, Orchestrator, Investigation tách biệt; sự cố một service không kéo sập toàn bộ. Kafka Streams chạy riêng `corebank-payment-stream` để tránh ảnh hưởng API.
+- **Deployment Strategy**: rolling update với health check `/actuator/health`. Giữ ≥2 replica cho payment và orchestrator để đáp ứng SLA khi 1 instance bảo trì.
+
+### 11.4 Vận hành và error budget
+- Error budget 0.03% được sử dụng cho thay đổi sản xuất: mỗi lần release phải ước lượng downtime (ví dụ rolling update 3 phút/30 ngày = 0.0069%, còn 0.0231% cho sự cố).
+- Khi error budget còn < 30%, tạm dừng release mới, tập trung tối ưu độ ổn định (game day, chaos testing).
+- Runbook downtime phải xác định MTTR mục tiêu ≤ 5 phút: các bước chính gồm kiểm tra health check, Kafka, Redis, DB, Tuxedo Gateway và cho phép failover manual.
+
+### 11.5 Liên hệ SLA với autoscaling Kubernetes
+- Để giữ SLA, cần bảo đảm có đủ replica xử lý khi lưu lượng tăng đột biến. HPA (Horizontal Pod Autoscaler) và service mesh Istio hỗ trợ cân bằng tải, điều phối traffic và quan sát chi tiết latency theo pod/route.
+- Autoscaling phải được phối hợp cùng error budget: scale-out trước giờ cao điểm giảm rủi ro đụng ngưỡng SLA; scale-in cần grace period để tránh chặn request đang xử lý.
+
+---
+
+## 12. Kubernetes, HPA và Istio trong Payment Lab
+
+### 12.1 Hạ tầng Kubernetes tổng quan
+- Mỗi service (`corebank-payment`, `corebank-orchestrator`, `corebank-investigation`, `corebank-payment-stream`) triển khai dạng Deployment + Service trong namespace `payment-lab`.
+- ConfigMap/Secret quản lý cấu hình profile `lab-java21,lab-cloud`, thông tin Kafka/Redis được mount qua env.
+- Liveness/readiness probe trỏ `/actuator/health/liveness` và `/actuator/health/readiness` để k8s tự phát hiện lỗi, đảm bảo self-healing nhanh hơn MTTR mục tiêu.
+
+### 12.2 Horizontal Pod Autoscaler (HPA)
+- HPA dùng Metrics Server hoặc Prometheus Adapter để scale dựa trên CPU, memory hoặc custom metrics (vd `http_server_requests_seconds_count`).
+- Đề xuất rule:
+
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: payment-service-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: corebank-payment
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 55
+    - type: Pods
+      pods:
+        metric:
+          name: http_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "15"
+```
+
+- **Lưu ý vận hành**:
+  - Đặt `minReplicas` ≥ 2 để đáp ứng SLA dù 1 pod gặp sự cố.
+  - Bật `podDisruptionBudget` (ví dụ `minAvailable: 2`) tránh cùng lúc mất nhiều pod khi node bảo trì.
+  - Khi metric `http_requests_per_second` vượt ngưỡng lâu dài, tăng `maxReplicas` hoặc tối ưu code để giảm latency.
+
+### 12.3 Istio Service Mesh
+- Istio cung cấp traffic management, bảo mật mTLS và observability chi tiết giữa các service.
+- Các thành phần chính:
+  - **Envoy sidecar**: chèn vào từng pod, cung cấp retries, circuit breaker, telemetry.
+  - **VirtualService/Gateway**: định tuyến request từ ingress tới service nội bộ; hỗ trợ canary hoặc A/B test orchestrator.
+  - **DestinationRule**: khai báo subset version, bật mTLS `ISTIO_MUTUAL`.
+- Ví dụ VirtualService canary 10% traffic cho phiên bản mới của payment service:
+
+```yaml
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: vs-payment
+spec:
+  hosts:
+    - payment.lab.svc.cluster.local
+  http:
+    - route:
+        - destination:
+            host: payment.lab.svc.cluster.local
+            subset: v2
+          weight: 10
+        - destination:
+            host: payment.lab.svc.cluster.local
+            subset: v1
+          weight: 90
+```
+
+- **Lợi ích chính**:
+  - mTLS end-to-end, phù hợp yêu cầu bảo mật khi kết nối tới kênh Tuxedo hoặc API SBV.
+  - Rate limiting, retry và outlier detection cấu hình ở level mesh, giảm phụ thuộc code.
+  - Tracing và metric qua Prometheus/Grafana/Kiali giúp theo dõi latency từng hop, bổ trợ tính SLA.
+
+### 12.4 Best practice phối hợp HPA & Istio
+- HPA scale-out có thể gây spike traffic tới pod mới; dùng Istio `warmupDurationSecs` để gradual load.
+- Kết hợp `RequestAuthentication` + `AuthorizationPolicy` bảo vệ API nội bộ khi mesh bật mTLS.
+- Thiết lập `PeerAuthentication` ở chế độ `STRICT` để tránh request không mã hóa.
+- Giám sát metric Istio (`istio_requests_total`, `istio_request_duration_milliseconds`) và liên kết với dashboard SLA đã mô tả ở Section 11.
+
 > **Lưu ý**: Khi mở rộng thêm tính năng (ví dụ sealed interface cho Investigation states hoặc tích hợp Tuxedo thật), hãy cập nhật tài liệu này để đảm bảo mọi thay đổi lớp/phương thức đều được ghi nhận.

@@ -1,0 +1,18 @@
+JOB DESCRIPTION
+Build and manage enterprise & solution architecture, design technology roadmap aligned with business strategy.
+Design and integrate core financial systems: Core Banking, Loan Origination/Management, Card Management, Payment Platforms.
+Implement modern technology architecture: Cloud/Hybrid (AWS), microservices, containerization, API Gateway, ESB.
+Ensure information security and compliance (ISO 27001, PCI DSS, SBV standards).
+Lead technical teams, review/approve key architectural decisions, mentor and share best practices.
+Collaborate effectively with business units, vendors, and senior executives.
+
+
+2. JOB REQUIREMENTS
+
+Minimum 10 years in ICT, including ≥3 years as Solution/Enterprise Architect.
+5+ years in banking, fintech, or financial services.
+Hands-on experience with Core Banking, Payment Systems, Loan Processing.
+Strong knowledge of enterprise architecture (TOGAF, Zachman, or equivalent).
+Proficiency in modern technologies: Cloud, Microservices, DevOps, Data Architecture.
+Excellent leadership, strategic thinking, communication, and stakeholder management skills.
+Preferred: TOGAF/AWS/CISSP certifications, or experience in fintech/digital banking.
