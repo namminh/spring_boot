@@ -181,6 +181,74 @@ Sơ đồ tác vụ chính:
 - Automated regression environment (Kubernetes pod + Tuxedo container base image) để test chức năng/hiệu năng.
 - Infrastructure as Code: Terraform quản lý network, Kafka, Vault; Ansible cấu hình Tuxedo domain, Oracle client.
 
+### 3.7 Concurrency & Flow Control Patterns (Song ngữ)
+- **VN — Single-port listener & worker pool:** API Gateway/Orchestrator lắng nghe trên một port (ví dụ `5050`). Mỗi kết nối TCP được OS map thành cặp `client_ip:ephemeral_port ↔ server_ip:5050`; thread pool hoặc event loop `accept()` và gán socket con cho worker. Điều này giảm yêu cầu mở nhiều port trên firewall, đồng thời tận dụng tối đa load balancer/Anycast.  
+  **EN — Single-port listener & worker pool:** The API Gateway/Orchestrator listens on a single port (e.g. `5050`). The OS maps each TCP session as `client_ip:ephemeral_port ↔ server_ip:5050`; a thread pool or event loop calls `accept()` and hands the child socket to a worker. This eliminates wide firewall openings while maximising compatibility with load balancers/Anycast.
+- **VN — Kiến trúc WSL/WSH đa port:** Đối với kênh Workstation của Tuxedo, `WSL` nhận handshake trên `-n` port nội bộ rồi trả địa chỉ `-H` công khai; mỗi `WSH` con bind vào dải port `-p/-P` để trao đổi xuyên suốt phiên. Cần thiết lập firewall cho toàn dải và monitor `WSH` pool (`-m/-M`) để tránh hết slot.  
+  **EN — WSL/WSH multi-port architecture:** Within the Tuxedo Workstation channel, `WSL` handles the initial handshake on the `-n` internal port, returns the public `-H` address, and each child `WSH` binds to the `-p/-P` range for the life of the session. Ensure firewall rules cover the full range and monitor the `WSH` pool (`-m/-M`) to prevent slot exhaustion.
+- **VN — Semaphore + backpressure cho tài nguyên dùng chung:** Orchestrator và adapter sử dụng semaphore để giới hạn số request đồng thời truy cập connection pool JDBC/ATMI. Khi hết permit, request được đưa vào hàng đợi hoặc trả phản hồi 429/503, tạo backpressure ngược về gateway/client. Cấu trúc chuẩn:  
+  ```
+  Client → API Listener (5050) → Request Queue → Semaphore (permits = N)
+         → Worker Pool → Shared Resource (DB/Tuxedo) → Response
+  ```  
+  **EN — Semaphore + backpressure for shared resources:** The orchestrator and adapters rely on semaphores to cap concurrent access to JDBC/ATMI pools. When permits are exhausted, requests wait in queues or return 429/503, pushing backpressure upstream. The typical flow is illustrated in the ASCII diagram above.
+- **VN — Connection pool health & fail-safe:** Đặt `maxLifetime` nhỏ hơn `wait_timeout` phía Oracle ~20%, bật validation query nhẹ, log khi pool cạn. Outlier release (rò rỉ kết nối) được phát hiện qua metric `active`/`waiting`.  
+  **EN — Connection pool health & fail-safe:** Set `maxLifetime` ~20% below Oracle `wait_timeout`, enable lightweight validation queries, and log pool exhaustion. Detect connection leaks via `active`/`waiting` metrics.
+- **VN — Multiplexing và coalescing:** Với WebFlux/gRPC streaming, sử dụng HTTP/2 để multiplex nhiều stream trên một socket; coalesce thông điệp (gộp nhiều sự kiện của cùng tài khoản) để giảm jitter.  
+  **EN — Multiplexing & coalescing:** WebFlux/gRPC streaming over HTTP/2 enables multiplexing many logical streams on a single socket; coalescing related messages (per account/customer) smooths jitter.
+- **VN — Quan trắc:** Thu thập metric `queue_depth`, `semaphore_permits`, `WSH_in_use`, `connection_wait_ms`, `p95_latency`. Thiết lập cảnh báo pre-emptive ở ngưỡng 70% tài nguyên.  
+  **EN — Observability:** Capture `queue_depth`, `semaphore_permits`, `WSH_in_use`, `connection_wait_ms`, and `p95_latency`. Fire proactive alerts once utilisation crosses 70%.
+
+### 3.8 Security & Compliance Architecture (Song ngữ)
+- **VN — Phân tầng & Zero Trust:** DMZ (gateway), app tier (orchestrator, adapter), core tier (Tuxedo, Oracle) tách biệt bằng firewall, ACL và mTLS. Service mesh (Istio/Linkerd) cưỡng chế mutual TLS nội bộ, RBAC và policy rate-limit.  
+  **EN — Segmentation & Zero Trust:** DMZ, application, and core tiers are isolated via firewalls, ACLs, and mutual TLS. The service mesh enforces mTLS, RBAC, and traffic policies for east-west calls.
+- **VN — Bảo vệ dữ liệu:** Tokenization PAN, encryption-at-rest (TDE, Vault/KMS), signing outbound payloads. Persistent secrets quản lý qua Vault dynamic secret, rotation tự động <90 ngày.  
+  **EN — Data protection:** Tokenise PAN, enforce encryption-at-rest (TDE, Vault/KMS), sign outbound payloads. Secrets are managed via Vault dynamic credentials rotated inside 90 days.
+- **VN — Identity & Access:** IAM phân vai (least privilege) cho con người và workload identity, audit tất cả thay đổi cấu hình qua GitOps.  
+  **EN — Identity & Access:** Enforce least-privilege IAM for human and workload identities; all configuration changes audited through GitOps history.
+- **VN — Compliance:** Mapping control ISO 27001 Annex A, PCI DSS Req. 3/7/10/11, Circular SBV 18/TT-NHNN; tự động hoá minh chứng (config snapshot, policy-as-code).  
+  **EN — Compliance:** Map controls to ISO 27001 Annex A, PCI DSS Req. 3/7/10/11, and SBV Circular 18/TT-NHNN; automate evidence collection via config snapshots and policy-as-code.
+
+### 3.9 Data Governance & Analytics (Song ngữ)
+- **VN — Data lineage & catalog:** Schema registry (Avro/Protobuf) + metadata catalog (Glue/DataHub) ghi rõ producer/consumer, giúp impact analysis.  
+  **EN — Data lineage & catalog:** A schema registry plus metadata catalog documents producers/consumers, enabling impact analysis.
+- **VN — Data quality & reconciliation:** Streaming job kiểm tra ngưỡng (amount mismatch, duplicate idempotency key), push cảnh báo; Landing Zone lưu thô (immutable) rồi ETL sang DWH chuẩn hoá accounting view.  
+  **EN — Data quality & reconciliation:** Streaming jobs run threshold rules (amount mismatches, duplicate idempotency keys) and emit alerts; the Landing Zone stores immutable raw data before ETL into reconciled warehouses.
+- **VN — Retention & privacy:** Chính sách lưu trữ 7 năm (ledger/audit), 2 năm cho event chi tiết; áp dụng masking/pseudonym cho môi trường non-prod.  
+  **EN — Retention & privacy:** Retain ledger/audit data for seven years, detailed events for two; mask or pseudonymise data in non-production environments.
+
+### 3.10 Testing & Quality Assurance (Song ngữ)
+- **VN — Tầng kiểm thử:** Unit (Java, C++), contract (OpenAPI/AsyncAPI), integration (Tuxedo mock), end-to-end (SIT/UAT), performance (Gatling/k6), chaos (latency injection, failover).  
+  **EN — Testing layers:** Unit (Java, C++), contract (OpenAPI/AsyncAPI), integration (mock Tuxedo), end-to-end (SIT/UAT), performance (Gatling/k6), chaos (latency injection, failover).
+- **VN — Data replay harness:** Sử dụng Kafka log + synthetic dataset để replay kịch bản sản lượng; automation so sánh ledger vs Kafka event.  
+  **EN — Data replay harness:** Use Kafka logs plus synthetic datasets to replay production-like scenarios; automated comparison between ledger entries and Kafka events.
+- **VN — Quality gates:** SAST/DAST, dependency scanning, license check; pipeline chặn merge nếu vi phạm.  
+  **EN — Quality gates:** SAST/DAST, dependency and license scanning; pipelines block merges on failures.
+
+### 3.11 Deployment & Release Management (Song ngữ)
+- **VN — GitOps & progressive delivery:** ArgoCD đồng bộ manifest; blue/green hoặc canary cho orchestrator và adapter. Feature flag/preview env giảm rủi ro phát hành tính năng.  
+  **EN — GitOps & progressive delivery:** ArgoCD syncs manifests; blue/green or canary releases for orchestrators/adapters. Feature flags and preview environments reduce release risk.
+- **VN — Change management:** Tích hợp ITIL CAB thông qua evidence pipeline (test report, risk assessment). Cutover cuối tuần có runbook hoàn chỉnh, checklist rollback.  
+  **EN — Change management:** Integrate ITIL CAB with pipeline evidence (test reports, risk assessments). Weekend cutovers follow detailed runbooks with rollback checklists.
+- **VN — Observability release:** Trước khi mở traffic, kiểm tra dashboard, alert, synthetic check; sau release so sánh SLO và phát hành postmortem nếu lệch.  
+  **EN — Observability release:** Validate dashboards, alerts, and synthetic checks before shifting traffic; compare SLOs post-release and raise postmortems if deviations occur.
+
+### 3.12 Business Continuity & DR (Song ngữ)
+- **VN — RTO/RPO:** Mục tiêu ≤30 phút (RTO), RPO ≤5 phút qua Oracle DataGuard, Kafka MirrorMaker 2, backup `tmloadcf -t`.  
+  **EN — RTO/RPO:** Target ≤30-minute RTO and ≤5-minute RPO via Oracle DataGuard, Kafka MirrorMaker 2, and `tmloadcf -t` backups.
+- **VN — Active-active:** Hai DC chạy đồng thời; orchestrator sử dụng routing theo region/circuit breaker để chuyển hướng khi cluster mất ổn định.  
+  **EN — Active-active:** Dual data centres operate active-active; orchestrators use region-aware routing and circuit breakers to divert traffic during instability.
+- **VN — DR drills & tabletop:** Lịch bán niên cho failover rehearsal, tabletop review scenario cyber/ops; cập nhật runbook ngay sau drill.  
+  **EN — DR drills & tabletop:** Semi-annual failover rehearsals and tabletop exercises for cyber/operational scenarios; update runbooks immediately afterward.
+
+### 3.13 Capacity & Cost Governance (Song ngữ)
+- **VN — Capacity model:** Dựa trên sản lượng hiện tại + CAGR, tính toán nhu cầu CPU, memory, connection pool, log volume; lập cảnh báo khi đạt 70% plan.  
+  **EN — Capacity model:** Project CPU, memory, pool connections, and log volume based on current load plus CAGR; alert once utilisation hits 70% of planned capacity.
+- **VN — FinOps:** Tag mọi workload (cost centre, environment); dashboard cost AWS/on-prem, phân tích anomaly, đề xuất rightsizing.  
+  **EN — FinOps:** Tag workloads by cost centre/environment; build cost dashboards (AWS/on-prem), analyse anomalies, and recommend rightsizing.
+- **VN — License optimisation:** Theo dõi usage Tuxedo/Oracle/Kafka; tận dụng container auto-scale để giảm license đỉnh, báo cáo quarterly cho procurement.  
+  **EN — License optimisation:** Monitor Tuxedo/Oracle/Kafka usage; leverage container auto-scaling to limit peak licenses and provide quarterly reports to procurement.
+
 ## 4. Legacy Core (kế thừa, mô tả ngắn)
 - Tuyến `Tuxedo Adapter → Oracle Tuxedo Domain (Pro*C Services) → Oracle DB` giữ nguyên logic, schema, quy trình vận hành.
 - Domain `PAYMENT_DOM` gồm các server group `PAY_AUTH_SRV`, `PAY_POST_SRV`, `PAY_STL_SRV`, `EVENT_PUB_SRV`; load balancing, failover theo `MAXGEN`, `LDBAL`.
@@ -224,5 +292,3 @@ Sơ đồ tác vụ chính:
 - Pipeline definition (GitLab CI/Jenkinsfile), Ansible/Terraform playbook.
 - Runbook vận hành (start/stop domain, xử lý giao dịch treo, DR drill), dashboard Grafana.
 - Bộ test contract, performance suite (Gatling/K6), checklist bảo mật/PCI DSS.
-
-
